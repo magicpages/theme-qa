@@ -129,6 +129,9 @@ first, so one profile never leaks into the next.
   Prefer fewer, trustworthy failures over broad, noisy ones.
 - **Same result locally and in CI.** Browser checks run in the pinned Playwright
   Docker image (`mcr.microsoft.com/playwright:v<version>-noble`) so screenshots
+- **Ghost runs with `NODE_ENV=production`**, like a live site. In development
+  mode Ghost re-reads partials on every request, and concurrent requests can
+  render Ghost's built-in partials instead of the theme's overrides.
   match. `@playwright/test` is pinned to that exact version; bump both together.
 - **Theme repos only add config.** If a theme needs special handling, add a
   config option, not a theme-name check in this repo.

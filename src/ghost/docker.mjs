@@ -72,7 +72,11 @@ async function containerState(name) {
 export function runArgs(config) {
   const url = ghostUrl(config);
   const env = {
-    NODE_ENV: 'development',
+    // Production caches compiled templates like a live site does. Development
+    // re-reads every partial on each request, and concurrent requests then
+    // sometimes render Ghost's built-in partial (e.g. navigation) instead of
+    // the theme's override.
+    NODE_ENV: 'production',
     database__client: 'sqlite3',
     database__connection__filename: '/var/lib/ghost/content/data/ghost.db',
     url,
