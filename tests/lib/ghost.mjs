@@ -17,6 +17,9 @@ export const GHOST_ROOTS = [
 export const GHOST_CARD = '.kg-card';
 export const THEME_STYLED_RULES = new Set(['color-contrast', 'color-contrast-enhanced']);
 
+/** The paywall Ghost's {{content}} renders on gated posts, coloured inline with the accent. */
+export const GHOST_PAYWALL = '.gh-post-upgrade-cta';
+
 /**
  * Feeds, sitemaps and other non-HTML routes get the status and console checks
  * only: accessibility, keyboard and screenshot checks are about pages.

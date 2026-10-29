@@ -50,8 +50,11 @@ reproduced locally with one command.
 | Screenshots | Every template at phone, tablet and desktop widths, in light and dark mode. Compared against approved screenshots, so layout changes show up in review. |
 
 Problems inside what Ghost renders itself (Portal, search, comments, the
-markup of editor cards) don't fail a theme. They're listed as ignored in the
-output, so nothing is hidden.
+markup of editor cards) don't fail a theme. Neither does contrast that only
+depends on the accent colour the publisher picks in Ghost Admin: white text on
+the accent, and the accent-coloured paywall. They're listed as ignored in the
+output, so nothing is hidden. Colour contrast inside editor cards does count:
+the theme can restyle cards, and readers see the result either way.
 
 Automated checks don't replace a person. Real phones, screen readers, paid
 member signups through Stripe and design review stay manual.
