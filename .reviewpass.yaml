@@ -1,6 +1,5 @@
-# reviewpass configuration. Secrets live in repository settings. The workflow
-# sets the model again through the environment, which wins over this file, so a
-# branch cannot choose where its own review runs.
+# reviewpass configuration for local reviews (`/reviewpass` skill or
+# `npx @magicpages/reviewpass --base main`).
 model:
   backend: claude-code
   name: sonnet

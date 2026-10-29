@@ -1,6 +1,6 @@
 ---
 name: address-review
-description: Triage and address PR review comments from reviewpass, humans, and other bots. Self-critiques fixes (YAGNI/KISS), runs /review + lint + test, replies to each thread, and resolves threads until reviewpass can approve. Use after a review lands.
+description: Triage and address PR review comments from humans and bots. Self-critiques fixes (YAGNI/KISS), runs /review + lint + test, replies to each thread, and resolves the threads it addressed. Use after a review lands.
 user-invocable: true
 argument-hint: [pr-number]
 ---
@@ -39,7 +39,7 @@ If no PR exists for the branch, stop and tell the user.
 
 ## Phase 2: Fetch All Review Comments
 
-Pull comments from every reviewer (reviewpass + humans + other bots), excluding the PR author's own comments.
+Pull comments from every reviewer (humans and bots), excluding the PR author's own comments.
 
 **Inline (in-diff) comments:**
 
@@ -54,8 +54,6 @@ gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/comments" \
 gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/reviews" \
   --jq ".[] | select(.user.login != \"$PR_AUTHOR\" and .body != null and .body != \"\") | {id, state, body, user: .user.login}"
 ```
-
-reviewpass lists its smaller points in the review body, not as threads: one bullet each, marked `<!-- reviewpass:finding:<id> -->`. Take them from the latest reviewpass review only; earlier bodies were answered in earlier rounds. Triage them like inline comments. They have no thread to resolve, so answer them all in one PR-level reply with one line per finding, starting with its `<id>`.
 
 **Review threads (for resolution later) — GraphQL:**
 
@@ -76,7 +74,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
 }'
 ```
 
-Build a `commentId → threadNodeId` map from this — you'll need it in Phase 8. A thread whose first comment's author is `reviewpass` is a reviewpass thread (GraphQL drops the `[bot]` suffix that REST shows).
+Build a `commentId → threadNodeId` map from this — you'll need it in Phase 8.
 
 **Bail clean:** if there are zero non-author comments and no review bodies, tell the user "No review comments to address" and stop.
 
@@ -99,11 +97,11 @@ For each comment, bucket it:
 Don't hardcode the list. Read the actual policy:
 
 - `AGENTS.md` — any convention that explicitly permits the flagged pattern
-- reviewpass reads `.reviewpass.yaml` and the repo's `AGENTS.md`; when a reviewpass finding contradicts a documented convention there, the project rule wins — name the rule in the reply
+- A finding from a bot that contradicts a documented convention: the project rule wins — name the rule in the reply
 
 ### Judgment call — read referenced file + nearby code
 
-Decide based on existing patterns in the codebase. When two reviewers conflict (e.g. a human disagrees with reviewpass), the human's comment takes precedence.
+Decide based on existing patterns in the codebase. When two reviewers conflict (e.g. a human disagrees with a bot), the human's comment takes precedence.
 
 ## Phase 4: Self-Critique Fixes (YAGNI / KISS Lens)
 
@@ -167,7 +165,7 @@ If multiple thematically distinct fix groups landed, use multiple commits rather
 
 ## Phase 8: Reply and Resolve Threads
 
-For every fetched comment, post a reply on the PR. Resolve the threads you addressed and the reviewpass threads you answered with a reason. An open reviewpass thread holds back its approval, and your reply is what it reads on later runs to stop raising the finding. Leave skipped threads from humans open so they can decide.
+For every fetched comment, post a reply on the PR. Resolve the threads you addressed. Leave skipped threads open so the reviewer can decide.
 
 ### Reply formats
 
@@ -191,7 +189,7 @@ gh api "repos/$REPO/issues/$PR_NUMBER/comments" -f body="<reply>"
 
 ### Resolve threads
 
-For each thread whose comment(s) were Addressed, and each reviewpass thread you skipped with a reply, look up the `threadNodeId` from the map built in Phase 2. Once its reply has posted, resolve it:
+For each thread whose comment(s) were Addressed, look up the `threadNodeId` from the map built in Phase 2. Once its reply has posted, resolve it:
 
 ```bash
 gh api graphql -f threadId="$THREAD_NODE_ID" -f query='
@@ -204,15 +202,7 @@ mutation($threadId: ID!) {
 
 If the mutation fails (already resolved, permission, network), log it and continue — don't block the rest of the loop.
 
-**Do NOT** resolve a human's thread where you skipped the suggestion, or a thread the reply leaves to the user. Those stay open intentionally, and an open reviewpass thread among them blocks approval until the user settles it.
-
-### Ask for a new review when nothing was pushed
-
-reviewpass reviews again on every push. When this round pushed no commit, nothing triggers a review, so ask for one. It reviews the commits since its last review and approves when it finds nothing new and none of its threads are open:
-
-```bash
-gh pr comment "$PR_NUMBER" --body "@reviewpass review"
-```
+**Do NOT** resolve a thread where you skipped the suggestion, or a thread the reply leaves to the user. Those stay open intentionally.
 
 ## Phase 9: Final Report
 
@@ -221,6 +211,6 @@ Tell the user:
 1. Counts: addressed / skipped (false positive) / skipped (YAGNI or scope)
 2. Threads resolved vs left open, with a one-line summary for each open thread (so the user can scan them)
 3. New commit SHA(s) and URL(s)
-4. reviewpass reviews the new head. It approves only when that review finds nothing new and none of its threads are open. Run `/babysit-pr` to wait for it, then `/address-review` again until it approves.
+4. Ask the reviewers to look at the new head; run `/address-review` again when new comments land.
 
 If `/review` hit its 3-iteration cap with unresolved findings, surface those explicitly under a **Needs your decision** heading.

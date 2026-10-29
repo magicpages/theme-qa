@@ -266,10 +266,10 @@ Tell the user:
 1. The PR URL
 2. Branch name and (if applicable) the absolute worktree path — remind them this session is `cd`'d into the worktree
 3. Brief summary of what was implemented
-4. reviewpass reviews every push to the PR. The PR merges only once reviewpass approves it.
+4. CI must pass before the PR merges.
 
 **Suggested next steps:**
 
-- `/babysit-pr` — wait for reviewpass's review of the current head; on findings, run `/address-review` and repeat until it approves
+- `/address-review` once review comments land
 - After merge, run `/cleanup` from the main repo to remove this worktree
 - `/worktree <other-issue>` if you want a separate parallel session for another issue in a different terminal tab
