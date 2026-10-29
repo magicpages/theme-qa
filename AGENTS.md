@@ -73,7 +73,9 @@ Keep these signatures stable; the CLI and the other modules depend on them.
 - `src/ghost/index.mjs`:
   - `startGhost(config)` returns `{ url }` once Ghost answers.
   - `provision(config, { url, zipPath })` returns the manifest and writes it to
-    `<theme>/.theme-qa/manifest.json`.
+    `<theme>/.theme-qa/manifest.json`. Before returning it requests every
+    resized image on the manifest pages once, one at a time: concurrent first
+    requests for a new size can get an empty response from Ghost.
   - `applyProfile(config, manifest, profileName)` sets custom theme settings
     and site settings for that profile.
   - `readManifest(config)` reads the manifest back.
@@ -127,11 +129,11 @@ first, so one profile never leaks into the next.
   those out by origin and say so in the check's output.
 - **A check that can't tell theme bugs from Ghost bugs is worse than no check.**
   Prefer fewer, trustworthy failures over broad, noisy ones.
-- **Same result locally and in CI.** Browser checks run in the pinned Playwright
-  Docker image (`mcr.microsoft.com/playwright:v<version>-noble`) so screenshots
 - **Ghost runs with `NODE_ENV=production`**, like a live site. In development
   mode Ghost re-reads partials on every request, and concurrent requests can
   render Ghost's built-in partials instead of the theme's overrides.
+- **Same result locally and in CI.** Browser checks run in the pinned Playwright
+  Docker image (`mcr.microsoft.com/playwright:v<version>-noble`) so screenshots
   match. `@playwright/test` is pinned to that exact version; bump both together.
 - **Theme repos only add config.** If a theme needs special handling, add a
   config option, not a theme-name check in this repo.

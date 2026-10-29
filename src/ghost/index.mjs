@@ -164,6 +164,27 @@ function mergeConfigUrls(pages, urls) {
 }
 
 /**
+ * Ghost resizes an image the first time a size is requested, and concurrent
+ * first requests for the same size can get an empty response. Requesting every
+ * resized image once, one at a time, keeps the parallel browser checks from
+ * seeing broken images.
+ */
+async function warmImageSizes(url, pages) {
+  const started = Date.now();
+  const images = new Set();
+  for (const page of pages) {
+    const response = await fetch(new URL(page.path, url));
+    const html = await response.text();
+    if (!response.headers.get('content-type')?.includes('text/html')) continue;
+    for (const [match] of html.matchAll(/[^\s"',]*\/content\/images\/size\/[^\s"',]+/g)) {
+      images.add(new URL(match, url).href);
+    }
+  }
+  for (const image of images) await (await fetch(image)).arrayBuffer();
+  log(`Resized ${images.size} images in ${seconds(started)}`);
+}
+
+/**
  * @param {{ url: string, zipPath: string, empty?: boolean }} options `empty`
  *   leaves out all posts, pages and tags (base and theme) to test empty states.
  *   Site settings, fixtures and routes still go in: a new site has those too.
@@ -223,6 +244,7 @@ export async function provision(config, { url, zipPath, empty = false }) {
     // A URL that only exists once there is content opts out with `empty: false`.
     empty ? config.urls.filter((entry) => entry.empty !== false) : config.urls,
   );
+  await warmImageSizes(url, pages);
 
   const manifest = {
     url,

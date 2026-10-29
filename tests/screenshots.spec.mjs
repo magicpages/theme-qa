@@ -6,11 +6,20 @@ import { test, expect } from './fixtures.mjs';
 import { runtime, noteIgnored } from './lib/runtime.mjs';
 import { GHOST_ROOTS } from './lib/ghost.mjs';
 
-const MASKED = [...runtime.screenshots.mask, ...GHOST_ROOTS];
+const MASKED = runtime.screenshots.mask;
+// Ghost's apps load late and resize themselves (the comments iframe grows as
+// it renders), so they are hidden rather than masked.
+const HIDE_GHOST_APPS = `${GHOST_ROOTS.join(', ')} { display: none !important; }`;
 
-/** Loads lazy images and web fonts so the full-page capture is complete and stable. */
+/**
+ * Loads lazy images and web fonts so the full-page capture is complete, hides
+ * Ghost's apps, then pins the page height: a fractional document height rounds
+ * differently from one capture to the next, and Playwright never sees two
+ * identical screenshots in a row.
+ */
 async function settle(page) {
   await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+  await page.addStyleTag({ content: HIDE_GHOST_APPS });
   await page.evaluate(async () => {
     for (const img of document.querySelectorAll('img[loading="lazy"]')) img.loading = 'eager';
     const pending = [...document.images]
@@ -24,6 +33,8 @@ async function settle(page) {
       );
     const timeout = new Promise((done) => setTimeout(done, 10_000));
     await Promise.race([Promise.all([...pending, document.fonts.ready]), timeout]);
+    const root = document.documentElement;
+    root.style.minHeight = `${Math.ceil(root.getBoundingClientRect().height)}px`;
   });
 }
 
@@ -40,7 +51,8 @@ for (const entry of runtime.manifest.pages.filter((p) => p.screenshot)) {
         await page.emulateMedia({ colorScheme: scheme });
         await page.goto(entry.path);
         await settle(page);
-        noteIgnored(testInfo, `screenshot: masked ${MASKED.join(', ')}`);
+        noteIgnored(testInfo, `screenshot: hidden ${GHOST_ROOTS.join(', ')}`);
+        if (MASKED.length) noteIgnored(testInfo, `screenshot: masked ${MASKED.join(', ')}`);
 
         await expect(page).toHaveScreenshot(name, {
           fullPage: true,
