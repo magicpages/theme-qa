@@ -74,6 +74,13 @@ jobs:
         env:
           GHOST_VERSION: ${{ inputs.ghost-version }}
 
+      # upload-artifact rejects paths with `.` segments, which the default
+      # working-directory produces.
+      - name: Resolve theme folder
+        id: theme
+        if: always()
+        run: echo "dir=$(pwd -P)" >> "$GITHUB_OUTPUT"
+
       # Results, diffs and any screenshots that had no approved version yet.
       # Download the artifact and commit new screenshots to approve them.
       - name: Upload results
@@ -82,8 +89,8 @@ jobs:
         with:
           name: theme-qa-results
           path: |
-            theme/${{ inputs.working-directory }}/.theme-qa/
-            theme/${{ inputs.working-directory }}/qa/screenshots/
+            ${{ steps.theme.outputs.dir }}/.theme-qa/
+            ${{ steps.theme.outputs.dir }}/qa/screenshots/
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 14
