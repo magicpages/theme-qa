@@ -1,0 +1,124 @@
+name: Theme QA
+
+# Reusable workflow. A theme repo calls it with:
+#
+#   jobs:
+#     qa:
+#       uses: magicpages/theme-qa/.github/workflows/theme.yml@v1
+#
+# It runs the same CLI a developer runs locally, so a red check here can be
+# reproduced with `npx @magicpages/theme-qa run` in the theme folder.
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: Theme folder, relative to the repository root.
+        type: string
+        default: .
+      node-version:
+        description: Node.js version used to build the theme.
+        type: string
+        default: '22'
+      ghost-version:
+        description: Ghost Docker image tag for the full run. Empty uses the theme's config (default 6-alpine).
+        type: string
+        default: ''
+      minimum-ghost:
+        description: Also run a smoke test on the oldest Ghost version in engines.ghost.
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    name: Static and browser checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: theme/${{ inputs.working-directory }}
+    steps:
+      # Full history so the settings check can compare against the last tag.
+      - name: Check out theme
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: theme
+          fetch-depth: 0
+
+      # Check out this repository at the exact commit the caller pinned, not
+      # main. github.workflow_ref would point at the caller's workflow. It goes
+      # next to the theme, not inside it, so GScan never scans it.
+      - name: Check out theme-qa
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: theme-qa
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install theme dependencies
+        run: npm ci
+
+      - name: Install theme-qa
+        working-directory: theme-qa
+        run: npm ci --omit=dev
+
+      - name: Run theme-qa
+        run: node "$GITHUB_WORKSPACE/theme-qa/bin/theme-qa.mjs" run ${GHOST_VERSION:+--ghost "$GHOST_VERSION"}
+        env:
+          GHOST_VERSION: ${{ inputs.ghost-version }}
+
+      # Results, diffs and any screenshots that had no approved version yet.
+      # Download the artifact and commit new screenshots to approve them.
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: theme-qa-results
+          path: |
+            theme/${{ inputs.working-directory }}/.theme-qa/
+            theme/${{ inputs.working-directory }}/qa/screenshots/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 14
+
+  minimum:
+    name: Smoke test on oldest supported Ghost
+    if: inputs.minimum-ghost
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: theme/${{ inputs.working-directory }}
+    steps:
+      - name: Check out theme
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: theme
+
+      - name: Check out theme-qa
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: theme-qa
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install theme dependencies
+        run: npm ci
+
+      - name: Install theme-qa
+        working-directory: theme-qa
+        run: npm ci --omit=dev
+
+      - name: Run theme-qa smoke test
+        run: node "$GITHUB_WORKSPACE/theme-qa/bin/theme-qa.mjs" run --minimum-ghost --smoke
