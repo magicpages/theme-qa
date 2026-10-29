@@ -27,7 +27,7 @@ function load() {
 
 /**
  * @type {{
- *   run: 'checks' | 'lighthouse',
+ *   run: 'checks' | 'lighthouse' | 'screenshots',
  *   manifest: { url: string, pages: { id: string, path: string, status: number, screenshot?: boolean, lighthouse?: boolean }[] },
  *   profile: { name: string, colorScheme?: 'light' | 'dark', custom?: object, settings?: object },
  *   colorSchemes: ('light' | 'dark')[],
@@ -35,7 +35,7 @@ function load() {
  *   local: boolean,
  *   ignore: { console: RegExp[], requests: RegExp[], axe: string[] },
  *   budgets: Record<string, number>,
- *   screenshots: { viewports: Record<string, { width: number, height: number }>, mask: string[], dir: string, updateAll: boolean },
+ *   screenshots: { viewports: Record<string, { width: number, height: number }>, mask: string[], dir: string | null },
  *   themeTests: string | null,
  *   resultsDir: string,
  * }}

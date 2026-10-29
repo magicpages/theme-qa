@@ -1,6 +1,7 @@
 // Playwright config for one profile. runBrowserChecks starts Playwright twice:
 // `checks` (shared specs plus the theme's own) and then `lighthouse`, so the
 // performance scores aren't measured while other workers load the CPU.
+// captureScreenshots starts it with `screenshots` for a visual comparison.
 
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,30 +11,25 @@ import { runtime } from './lib/runtime.mjs';
 const here = dirname(fileURLToPath(import.meta.url));
 
 const SMOKE_SPECS = ['status', 'console'];
-const SHARED_SPECS = [...SMOKE_SPECS, 'layout', 'a11y', 'keyboard', 'screenshots'];
+const SHARED_SPECS = [...SMOKE_SPECS, 'layout', 'a11y', 'keyboard'];
 const specs = (names) => new RegExp(`/(${names.join('|')})\\.spec\\.mjs$`);
 
-const projects =
-  runtime.run === 'lighthouse'
-    ? [{ name: 'lighthouse', testDir: here, testMatch: specs(['lighthouse']), timeout: 180_000 }]
-    : [
-        {
-          name: 'shared',
-          testDir: here,
-          testMatch: specs(runtime.smoke ? SMOKE_SPECS : SHARED_SPECS),
-          snapshotPathTemplate: join(runtime.screenshots.dir, '{arg}{ext}'),
-        },
-        ...(runtime.themeTests
-          ? [
-              {
-                name: 'theme',
-                testDir: runtime.themeTests,
-                testMatch: '**/*.spec.mjs',
-                snapshotPathTemplate: join(runtime.screenshots.dir, '{testFilePath}', '{arg}{ext}'),
-              },
-            ]
-          : []),
-      ];
+const projects = {
+  lighthouse: () => [
+    { name: 'lighthouse', testDir: here, testMatch: specs(['lighthouse']), timeout: 180_000 },
+  ],
+  screenshots: () => [{ name: 'screenshots', testDir: here, testMatch: specs(['screenshots']) }],
+  checks: () => [
+    {
+      name: 'shared',
+      testDir: here,
+      testMatch: specs(runtime.smoke ? SMOKE_SPECS : SHARED_SPECS),
+    },
+    ...(runtime.themeTests
+      ? [{ name: 'theme', testDir: runtime.themeTests, testMatch: '**/*.spec.mjs' }]
+      : []),
+  ],
+}[runtime.run]();
 
 export default defineConfig({
   projects,
@@ -46,16 +42,12 @@ export default defineConfig({
   ],
   forbidOnly: Boolean(process.env.CI),
   // Each test visits one page and shares no state, so tests within a file can
-  // spread over workers too. Without this the screenshot file alone sets the
-  // wall time, since it holds most of the tests.
+  // spread over workers too. Without this the largest spec file alone sets the
+  // wall time.
   fullyParallel: true,
   workers: runtime.run === 'lighthouse' ? 1 : undefined,
   timeout: 60_000,
-  updateSnapshots: runtime.screenshots.updateAll ? 'all' : 'missing',
-  expect: {
-    timeout: 15_000,
-    toHaveScreenshot: { animations: 'disabled' },
-  },
+  expect: { timeout: 15_000 },
   use: {
     browserName: 'chromium',
     baseURL: runtime.manifest.url,

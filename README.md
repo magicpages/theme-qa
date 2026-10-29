@@ -47,7 +47,7 @@ reproduced locally with one command.
 | Layout | Pages that scroll sideways at phone, tablet or desktop width, with the elements sticking out. |
 | Accessibility | [axe](https://github.com/dequelabs/axe-core) violations rated critical or serious, in light and dark mode. Keyboard basics: skip link, visible focus, menus that open and close with the keyboard. |
 | Performance | [Lighthouse](https://github.com/GoogleChrome/lighthouse) scores for the homepage and a post, against a budget per theme. |
-| Screenshots | Every template at phone, tablet and desktop widths, in light and dark mode. Compared against approved screenshots, so layout changes show up in review. |
+| Visual changes | On pull requests: every template at phone, tablet and desktop widths, in light and dark mode, before and after the change. Anything that looks different waits for a reviewer's approval. |
 
 Problems inside what Ghost renders itself (Portal, search, comments, the
 markup of editor cards) don't fail a theme. Neither does contrast that only
@@ -113,10 +113,10 @@ export default {
 | `seed(ctx)` | Adds theme content. `ctx` has `post`, `page`, `tag`, `upload`, `settings`, `custom`, `url`, editor `cards` and the shared `media` (images, audio, video). |
 | `base.exclude` | Base content groups to leave out: `cards`, `typography`, `titles`, `images`, `i18n`, `authors`, `tags`, `visibility`, `pagination`. |
 | `profiles` | Named sets of `custom` theme settings, site `settings` and an optional fixed `colorScheme`. Without `colorScheme`, pages are checked in light and dark mode. |
-| `urls` | Extra paths, as strings or `{ path, status, screenshot, lighthouse, empty }`. |
+| `urls` | Extra paths, as strings or `{ path, status, screenshot, lighthouse, empty }`. `screenshot: false` leaves a page out of the visual comparison. |
 | `ignore` | `console` and `requests` patterns and `axe` rule ids to skip. Every skip is printed, so nothing is hidden. |
 | `budgets` | Minimum Lighthouse scores per category, 0 to 1. |
-| `screenshots` | `viewports`, `mask` selectors and the `dir` for approved screenshots (default `qa/screenshots`). |
+| `screenshots` | `viewports` and `mask` selectors for the visual comparison. |
 | `build`, `zip` | Commands to build and package the theme. Default: the theme's `build` and `zip` scripts. |
 
 Theme-specific tests go in `qa/*.spec.mjs` and run next to the shared ones:
@@ -140,6 +140,10 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   qa:
     uses: magicpages/theme-qa/.github/workflows/theme.yml@v1
@@ -158,11 +162,32 @@ npx @magicpages/theme-qa run
 | `test` | Runs the browser checks against the running Ghost. |
 | `down` | Removes the Ghost container. |
 | `run` | All of the above, on an empty site and then a seeded one. What CI runs. |
+| `visual --base <ref>` | Screenshots the theme at `<ref>` and as it is now, and writes the differences to `.theme-qa/visual/report.html`. |
 
-New screenshots are saved the first time and pass. Commit them to approve
-them. After an intended design change, run `test --update-screenshots` and
-commit the new versions. In CI, new and failing screenshots are in the
-`theme-qa-results` artifact.
+## Reviewing visual changes
+
+Screenshots aren't kept in the repository. On every pull request, CI builds
+the theme twice, from the base branch and from the pull request, and
+screenshots both on the same Ghost site with the same content. Only the theme
+differs, so only the theme's changes show up.
+
+If any screenshot looks different, the run's summary lists them and links a
+report with before, after and the changed pixels for each. The "Approve
+visual changes" job then waits for someone to approve it. Every new push asks
+again. Nothing changed means nothing to approve.
+
+The approval is a GitHub
+[environment](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments)
+called `visual-review`. Create it once per theme repo, under Settings →
+Environments, and add the people who approve design changes as required
+reviewers. CI fails when the environment is missing or has no reviewers:
+GitHub would otherwise create it unprotected and let every change through.
+
+Locally, compare against any branch, tag or commit:
+
+```bash
+npx @magicpages/theme-qa visual --base main
+```
 
 ## Ghost versions
 

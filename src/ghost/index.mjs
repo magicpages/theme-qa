@@ -296,3 +296,24 @@ export async function applyProfile(config, manifest, profileName) {
     `Profile "${profileName}": ${Object.keys(custom).length} custom, ${Object.keys(values).length} site setting(s)`,
   );
 }
+
+/**
+ * Replaces the active theme with another build of the same theme (the base
+ * branch of a visual comparison) and keeps the custom setting values, so both
+ * builds are seen with the same settings. Settings the other build doesn't
+ * have are left out and listed.
+ */
+export async function switchTheme(manifest, zipPath) {
+  const api = createAdminApi(manifest.url);
+  await api.login();
+  const { custom_theme_settings: before } = await api.get('/custom_theme_settings/');
+  const theme = await installTheme(api, zipPath);
+  const { custom_theme_settings: after } = await api.get('/custom_theme_settings/');
+  const known = new Set(after.map((s) => s.key));
+  const kept = before.filter((s) => known.has(s.key)).map(({ key, value }) => ({ key, value }));
+  const dropped = before.filter((s) => !known.has(s.key)).map((s) => s.key);
+  if (kept.length) await api.put('/custom_theme_settings/', { custom_theme_settings: kept });
+  if (dropped.length) log(`Not in this build, left out: ${dropped.join(', ')}`);
+  await warmImageSizes(manifest.url, manifest.pages);
+  return theme;
+}

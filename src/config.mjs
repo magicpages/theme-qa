@@ -13,8 +13,8 @@ export const CONFIG_FILE = 'theme-qa.config.mjs';
 
 /**
  * The run against a site with no posts, for empty states. It is not a
- * profile a theme defines: same custom settings as the theme defaults, its
- * own Ghost site, and its own screenshot folder.
+ * profile a theme defines: same custom settings as the theme defaults, on its
+ * own Ghost site.
  */
 export const EMPTY_PROFILE = 'empty';
 
@@ -163,7 +163,6 @@ export function normalise(raw, { dir, pkg, configPath }) {
     screenshots: {
       viewports: raw.screenshots?.viewports ?? DEFAULT_VIEWPORTS,
       mask: raw.screenshots?.mask ?? [],
-      dir: resolve(dir, raw.screenshots?.dir ?? 'qa/screenshots'),
     },
     tests: resolve(dir, raw.tests ?? 'qa'),
   };

@@ -28,6 +28,20 @@ export async function buildTheme(config) {
 }
 
 /**
+ * Installs the theme's npm dependencies: `npm ci` with a lockfile, else
+ * `npm install`. The CLI only needs this for the base checkout of a visual
+ * comparison; the theme's own checkout is installed by whoever runs us.
+ */
+export async function installDependencies(dir) {
+  if (!existsSync(join(dir, 'package.json'))) return;
+  const command = existsSync(join(dir, 'package-lock.json'))
+    ? 'npm ci --no-audit --no-fund'
+    : 'npm install --no-audit --no-fund';
+  console.log(`\n── Install: ${command}`);
+  await runShell(command, dir);
+}
+
+/**
  * Returns the absolute path of the theme zip.
  *
  * With `zip.command`, runs it and picks up the zip it wrote. Without one,

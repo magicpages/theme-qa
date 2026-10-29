@@ -24,14 +24,15 @@ is how the code is put together.
 
 ```
 theme-qa/
-├── bin/theme-qa.mjs           # CLI: check | up | test | down | run
+├── bin/theme-qa.mjs           # CLI: check | up | test | down | run | visual
 ├── src/
 │   ├── config.mjs             # loadConfig(): the normalised config contract
-│   ├── theme.mjs              # buildTheme(), packageTheme()
+│   ├── theme.mjs              # buildTheme(), packageTheme(), installDependencies()
 │   ├── checks/                # static checks (no Ghost needed)
 │   ├── ghost/                 # Docker lifecycle, Admin API client, seeding
 │   │   └── seed/              # shared base content + seed helpers
-│   └── browser/               # runs Playwright, in Docker by default
+│   ├── browser/               # runs Playwright, in Docker by default
+│   └── visual/                # base checkout, screenshot diff, HTML report
 ├── tests/                     # the shared Playwright suite every theme gets
 ├── fixtures/                  # images/audio the base content uploads
 └── .github/workflows/theme.yml  # reusable workflow theme repos call
@@ -51,6 +52,14 @@ theme-qa/
 (profile name `empty`, reserved: theme defaults, no theme specs), then `up` +
 `test` on the seeded site. Empty runs first so `--keep` leaves the seeded site.
 
+`visual --base <ref>` is separate and runs on pull requests. It builds this
+checkout and `<ref>` (checked out into a temporary git worktree, with its own
+`npm ci`), seeds one site with this build, screenshots it in one profile,
+swaps in the base build, screenshots again and compares. It writes
+`.theme-qa/visual/{report.html,summary.md,changes.json}` and always exits 0;
+the workflow turns changes into an approval through the `visual-review`
+environment. No screenshots are ever committed.
+
 ### Module contracts
 
 Keep these signatures stable; the CLI and the other modules depend on them.
@@ -59,6 +68,7 @@ Keep these signatures stable; the CLI and the other modules depend on them.
   module reads the normalised shape, never the raw file. New config keys get a
   default in `normalise()`.
 - `src/theme.mjs`: `buildTheme(config)` runs `config.build` if set.
+  `installDependencies(dir)` runs `npm ci` (or `npm install` without a lockfile).
   `packageTheme(config)` runs `config.zip.command` and returns the absolute path
   of the zip it produced; a zip older than this run is rejected. Without a zip
   command it zips `git ls-files` (minus dotfiles) into `.theme-qa/<name>.zip`,
@@ -79,11 +89,19 @@ Keep these signatures stable; the CLI and the other modules depend on them.
   - `applyProfile(config, manifest, profileName)` sets custom theme settings
     and site settings for that profile.
   - `readManifest(config)` reads the manifest back.
+  - `switchTheme(manifest, zipPath)` uploads and activates another build,
+    keeps the custom setting values it still has, and warms image sizes again.
   - `stopGhost(config)` removes the container.
 - `src/browser/index.mjs`:
-  `runBrowserChecks(config, { manifest, profile, updateScreenshots, local, smoke })`
-  returns `{ ok }`. `smoke` runs only the status and console/network checks;
-  CI uses it on the oldest Ghost version in `engines.ghost`.
+  - `runBrowserChecks(config, { manifest, profile, local, smoke })` returns
+    `{ ok }`. `smoke` runs only the status and console/network checks; CI uses
+    it on the oldest Ghost version in `engines.ghost`.
+  - `captureScreenshots(config, { manifest, profile, outDir, local })` writes a
+    full-page PNG per `screenshotPlan()` entry into `outDir`.
+- `src/visual/`: `screenshotPlan(pages, viewports, schemes)` names the files
+  (`<page id>-<viewport>-<scheme>.png`); `checkoutBase(themeDir, ref)`,
+  `compareScreenshots(plan, { baseDir, prDir })` (pixelmatch, threshold 0.1)
+  and `writeReport(outDir, results, meta)`.
 
 ### The manifest
 
@@ -106,7 +124,7 @@ Keep these signatures stable; the CLI and the other modules depend on them.
 `pages` holds the standard templates (home, kitchen-sink post, plain post,
 style-guide page, tag, author, `/page/2/`, members-only post, 404), every URL a
 theme's `seed()` registers with `url()`, and `config.urls`. `id` names the
-screenshot files, so keep ids stable.
+screenshot files and report entries, so keep ids stable.
 
 `baseline` holds the values, captured right after seeding, of every custom
 theme setting and site setting any profile changes. `applyProfile` restores it
@@ -133,8 +151,8 @@ first, so one profile never leaks into the next.
   mode Ghost re-reads partials on every request, and concurrent requests can
   render Ghost's built-in partials instead of the theme's overrides.
 - **Same result locally and in CI.** Browser checks run in the pinned Playwright
-  Docker image (`mcr.microsoft.com/playwright:v<version>-noble`) so screenshots
-  match. `@playwright/test` is pinned to that exact version; bump both together.
+  Docker image (`mcr.microsoft.com/playwright:v<version>-noble`).
+  `@playwright/test` is pinned to that exact version; bump both together.
 - **Theme repos only add config.** If a theme needs special handling, add a
   config option, not a theme-name check in this repo.
 - **No AI attribution** in commits, pull requests, code comments or docs.

@@ -27,21 +27,62 @@ const FIXTURES = join(PKG_ROOT, 'tests', 'fixtures.mjs');
 const IGNORED = 'theme-qa:ignored';
 const LIGHTHOUSE = 'theme-qa:lighthouse';
 
+/** Light and dark, unless the profile fixes one. */
+export function colorSchemes(config, profile) {
+  const fixed = profile === EMPTY_PROFILE ? null : config.profiles[profile].colorScheme;
+  return fixed ? [fixed] : ['light', 'dark'];
+}
+
+/**
+ * Everything a Playwright run needs, with paths translated to where
+ * Playwright sees them.
+ */
+function runtimeFor(
+  config,
+  { run, manifest, profile, smoke, local, map, themeTests, resultsDir, screenshotsDir },
+) {
+  const profileConfig = profile === EMPTY_PROFILE ? {} : config.profiles[profile];
+  return {
+    run,
+    manifest,
+    profile: { name: profile, ...profileConfig },
+    colorSchemes: colorSchemes(config, profile),
+    smoke,
+    local,
+    ignore: {
+      console: config.ignore.console.map(toPattern),
+      requests: config.ignore.requests.map(toPattern),
+      axe: config.ignore.axe,
+    },
+    budgets: config.budgets,
+    screenshots: {
+      viewports: config.screenshots.viewports,
+      mask: config.screenshots.mask,
+      dir: screenshotsDir ? map(screenshotsDir) : null,
+    },
+    themeTests: themeTests ? map(themeTests) : null,
+    resultsDir: map(resultsDir),
+  };
+}
+
+function startPlaywright(config, plan, runtime) {
+  const env = { ...process.env, THEME_QA: JSON.stringify(runtime) };
+  return plan ? runInDocker(config, plan, env) : runOnHost(config, env);
+}
+
 /**
  * @param {Awaited<ReturnType<typeof import('../config.mjs').loadConfig>>} config
- * @param {{ manifest: object, profile: string, updateScreenshots?: boolean, local?: boolean, smoke?: boolean }} options
+ * @param {{ manifest: object, profile: string, local?: boolean, smoke?: boolean }} options
  * @returns {Promise<{ ok: boolean }>}
  */
 export async function runBrowserChecks(
   config,
-  { manifest, profile, updateScreenshots = false, local = false, smoke = false },
+  { manifest, profile, local = false, smoke = false },
 ) {
   const resultsDir = join(config.dir, '.theme-qa', 'results', profile);
-  const screenshotsDir = join(config.screenshots.dir, profile);
   // Stale reports from an earlier run would be mistaken for this one's.
   rmSync(resultsDir, { recursive: true, force: true });
   mkdirSync(resultsDir, { recursive: true });
-  mkdirSync(screenshotsDir, { recursive: true });
 
   // Theme specs assume the theme's seed content, which the empty site lacks.
   const empty = profile === EMPTY_PROFILE;
@@ -67,42 +108,57 @@ export async function runBrowserChecks(
         theme: config.dir,
         qa: PKG_ROOT,
         deps: DEPS_DIR,
-        extra: [resultsDir, screenshotsDir, themeTests].filter(Boolean),
+        extra: [resultsDir, themeTests].filter(Boolean),
       });
   const map = plan ? plan.map : (path) => path;
-  const profileConfig = empty ? {} : config.profiles[profile];
 
   let ok = true;
   for (const run of runs) {
-    const runtime = {
+    const runtime = runtimeFor(config, {
       run,
       manifest,
-      profile: { name: profile, ...profileConfig },
-      colorSchemes: profileConfig.colorScheme ? [profileConfig.colorScheme] : ['light', 'dark'],
+      profile,
       smoke,
       local,
-      ignore: {
-        console: config.ignore.console.map(toPattern),
-        requests: config.ignore.requests.map(toPattern),
-        axe: config.ignore.axe,
-      },
-      budgets: config.budgets,
-      screenshots: {
-        viewports: config.screenshots.viewports,
-        mask: config.screenshots.mask,
-        dir: map(screenshotsDir),
-        updateAll: updateScreenshots,
-      },
-      themeTests: themeTests && map(themeTests),
-      resultsDir: map(resultsDir),
-    };
-    const env = { ...process.env, THEME_QA: JSON.stringify(runtime) };
-    const code = plan ? await runInDocker(config, plan, env) : await runOnHost(config, env);
-    ok &&= code === 0;
+      map,
+      themeTests,
+      resultsDir,
+    });
+    ok &&= (await startPlaywright(config, plan, runtime)) === 0;
   }
 
   printSummary(resultsDir, runs, config.budgets);
   return { ok };
+}
+
+/**
+ * Takes a full-page screenshot of every page marked `screenshot`, at every
+ * viewport and color scheme of the profile, into `outDir`. The visual
+ * comparison runs this once per build, on the same site.
+ * @param {Awaited<ReturnType<typeof import('../config.mjs').loadConfig>>} config
+ * @param {{ manifest: object, profile: string, outDir: string, local?: boolean }} options
+ */
+export async function captureScreenshots(config, { manifest, profile, outDir, local = false }) {
+  const resultsDir = join(outDir, '.results');
+  rmSync(outDir, { recursive: true, force: true });
+  mkdirSync(resultsDir, { recursive: true });
+  const plan = local
+    ? null
+    : dockerMounts({ theme: config.dir, qa: PKG_ROOT, deps: DEPS_DIR, extra: [outDir] });
+  const map = plan ? plan.map : (path) => path;
+  const runtime = runtimeFor(config, {
+    run: 'screenshots',
+    manifest,
+    profile,
+    smoke: false,
+    local,
+    map,
+    resultsDir,
+    screenshotsDir: outDir,
+  });
+  if ((await startPlaywright(config, plan, runtime)) !== 0) {
+    throw new Error(`Some screenshots failed; see ${join(resultsDir, 'screenshots-report')}.`);
+  }
 }
 
 /** RegExps don't survive JSON; strings in `ignore` match literally. */

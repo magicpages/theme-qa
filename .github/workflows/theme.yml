@@ -2,12 +2,20 @@ name: Theme QA
 
 # Reusable workflow. A theme repo calls it with:
 #
+#   permissions:
+#     contents: read
+#     actions: read
 #   jobs:
 #     qa:
 #       uses: magicpages/theme-qa/.github/workflows/theme.yml@v1
 #
 # It runs the same CLI a developer runs locally, so a red check here can be
 # reproduced with `npx @magicpages/theme-qa run` in the theme folder.
+#
+# On pull requests it also screenshots the base branch and the pull request
+# on the same Ghost. If anything looks different, the "Approve visual
+# changes" job waits for a reviewer of the repository's `visual-review`
+# environment, which must exist and have required reviewers.
 
 on:
   workflow_call:
@@ -81,19 +89,118 @@ jobs:
         if: always()
         run: echo "dir=$(pwd -P)" >> "$GITHUB_OUTPUT"
 
-      # Results, diffs and any screenshots that had no approved version yet.
-      # Download the artifact and commit new screenshots to approve them.
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: theme-qa-results
-          path: |
-            ${{ steps.theme.outputs.dir }}/.theme-qa/
-            ${{ steps.theme.outputs.dir }}/qa/screenshots/
+          path: ${{ steps.theme.outputs.dir }}/.theme-qa/
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 14
+
+  visual:
+    name: Visual changes
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      changed: ${{ steps.compare.outputs.changed }}
+      report: ${{ steps.upload.outputs.artifact-url }}
+    defaults:
+      run:
+        working-directory: theme/${{ inputs.working-directory }}
+    steps:
+      # GitHub creates a missing environment on first use, without
+      # reviewers, and then lets every change through unasked. So check
+      # before anything can depend on it.
+      - name: Check the visual-review environment
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          if ! reviewers=$(gh api "repos/$REPO/environments/visual-review" \
+            --jq '[.protection_rules[]? | select(.type == "required_reviewers") | .reviewers[]] | length'); then
+            echo "::error::$REPO has no visual-review environment. Create it under Settings → Environments and add required reviewers."
+            exit 1
+          fi
+          if [ "$reviewers" = 0 ]; then
+            echo "::error::The visual-review environment of $REPO has no required reviewers, so visual changes would pass unapproved. Add reviewers under Settings → Environments → visual-review."
+            exit 1
+          fi
+          echo "visual-review has $reviewers required reviewer(s)."
+
+      # Full history so the base commit is there to build.
+      - name: Check out theme
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: theme
+          fetch-depth: 0
+
+      - name: Check out theme-qa
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: theme-qa
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install theme dependencies
+        run: npm ci
+
+      - name: Install theme-qa
+        working-directory: theme-qa
+        run: npm ci --omit=dev
+
+      - name: Compare with the base branch
+        id: compare
+        run: |
+          node "$GITHUB_WORKSPACE/theme-qa/bin/theme-qa.mjs" visual --base "$BASE_SHA" ${GHOST_VERSION:+--ghost "$GHOST_VERSION"}
+          echo "changed=$(jq '.changed | length' .theme-qa/visual/changes.json)" >> "$GITHUB_OUTPUT"
+          echo "dir=$(pwd -P)" >> "$GITHUB_OUTPUT"
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GHOST_VERSION: ${{ inputs.ghost-version }}
+
+      # Not zipped, so the report opens in the browser from the run page.
+      - name: Upload report
+        id: upload
+        if: steps.compare.outputs.changed != '0'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: ${{ steps.compare.outputs.dir }}/.theme-qa/visual/report.html
+          archive: false
+          retention-days: 14
+
+      - name: Summarise
+        env:
+          REPORT: ${{ steps.upload.outputs.artifact-url }}
+        run: |
+          cat .theme-qa/visual/summary.md >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$REPORT" ]; then
+            echo "[Open the report]($REPORT) to see before, after and the changed pixels." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  visual-approval:
+    name: Approve visual changes
+    needs: visual
+    if: needs.visual.outputs.changed != '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: visual-review
+    steps:
+      - name: Approved
+        env:
+          CHANGED: ${{ needs.visual.outputs.changed }}
+          REPORT: ${{ needs.visual.outputs.report }}
+        run: echo "$CHANGED changed screenshot(s) approved. Report at $REPORT"
 
   minimum:
     name: Smoke test on oldest supported Ghost
