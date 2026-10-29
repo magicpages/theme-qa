@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Theme QA run output, also written inside theme folders
+.theme-qa/
+test-results/
+playwright-report/
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Environment
+.env
+.env.local
+
+# Claude Code local settings (skills in .claude/skills are committed)
+.claude/settings.local.json
+
+# Agent worktrees
+.worktrees/
