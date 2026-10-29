@@ -44,9 +44,14 @@ reproduced locally with one command.
 | Translations | Keys present in `en.json` but missing in another locale. |
 | Pages load | Every template answers with the right status code: home, post, page, tag, author, pagination, 404, plus the theme's own routes. |
 | Console and network | JavaScript errors, theme assets that 404, libraries loaded from third-party CDNs. |
+| Layout | Pages that scroll sideways at phone, tablet or desktop width, with the elements sticking out. |
 | Accessibility | [axe](https://github.com/dequelabs/axe-core) violations rated critical or serious, in light and dark mode. Keyboard basics: skip link, visible focus, menus that open and close with the keyboard. |
-| Performance | [Lighthouse](https://github.com/GoogleChrome/lighthouse) scores against a budget per theme. |
+| Performance | [Lighthouse](https://github.com/GoogleChrome/lighthouse) scores for the homepage and a post, against a budget per theme. |
 | Screenshots | Every template at phone, tablet and desktop widths, in light and dark mode. Compared against approved screenshots, so layout changes show up in review. |
+
+Problems inside what Ghost renders itself (Portal, search, comments, the
+markup of editor cards) don't fail a theme. They're listed as ignored in the
+output, so nothing is hidden.
 
 Automated checks don't replace a person. Real phones, screen readers, paid
 member signups through Stripe and design review stay manual.
@@ -65,7 +70,8 @@ in three layers:
    tag and its `routes.yaml`. Kyiv's homepage builds sections from pages tagged
    `#features` and `#testimonials`.
 3. **Profiles.** Different combinations of custom settings. All browser checks
-   run once per profile, plus once against an empty site to test empty states.
+   run once per profile, plus once against a site with no posts to test empty
+   states.
 
 Test content is created by a script through Ghost's Admin API, not imported
 from an export file. Scripts keep working when Ghost changes its export format,
@@ -73,16 +79,16 @@ and changes to them are easy to review.
 
 ## Using it in a theme
 
-Add a config file to the theme repo:
+Add a config file to the theme repo. Every key is optional; without a file the
+theme gets the base content, one profile and the standard pages.
 
 ```js
 // theme-qa.config.mjs
 export default {
-  routes: './routes.yaml',
+  routes: 'routes.yaml',
 
   // Theme content, on top of the shared base content.
-  seed: async ({ page, tag }) => {
-    await tag({ name: '#features' });
+  async seed({ page }) {
     await page({ title: 'Fast by default', tags: ['#features'] });
     await page({ title: 'What readers say', tags: ['#testimonials'] });
   },
@@ -94,8 +100,31 @@ export default {
   },
 
   // URLs to check on top of the standard templates.
-  urls: ['/'],
+  urls: ['/features/'],
 };
+```
+
+| Key | What it does |
+|---|---|
+| `routes` | `routes.yaml` to upload before seeding. |
+| `seed(ctx)` | Adds theme content. `ctx` has `post`, `page`, `tag`, `upload`, `settings`, `custom`, `url`, editor `cards` and the shared `media` (images, audio, video). |
+| `base.exclude` | Base content groups to leave out: `cards`, `typography`, `titles`, `images`, `i18n`, `authors`, `tags`, `visibility`, `pagination`. |
+| `profiles` | Named sets of `custom` theme settings, site `settings` and an optional fixed `colorScheme`. Without `colorScheme`, pages are checked in light and dark mode. |
+| `urls` | Extra paths, as strings or `{ path, status, screenshot, lighthouse, empty }`. |
+| `ignore` | `console` and `requests` patterns and `axe` rule ids to skip. Every skip is printed, so nothing is hidden. |
+| `budgets` | Minimum Lighthouse scores per category, 0 to 1. |
+| `screenshots` | `viewports`, `mask` selectors and the `dir` for approved screenshots (default `qa/screenshots`). |
+| `build`, `zip` | Commands to build and package the theme. Default: the theme's `build` and `zip` scripts. |
+
+Theme-specific tests go in `qa/*.spec.mjs` and run next to the shared ones:
+
+```js
+import { test, expect } from '@magicpages/theme-qa/test';
+
+test('the podcast feed lists every episode', async ({ request, manifest }) => {
+  const response = await request.get(`${manifest.url}/podcast/rss/`);
+  expect(response.status()).toBe(200);
+});
 ```
 
 Call the shared workflow from the theme's CI:
@@ -118,6 +147,19 @@ Run the same checks locally (needs Docker and Node 22):
 ```bash
 npx @magicpages/theme-qa run
 ```
+
+| Command | What it does |
+|---|---|
+| `check` | Builds and zips the theme, runs the static checks. No Docker needed. |
+| `up` | Starts Ghost on port 2399 with the theme and test content, and leaves it running. |
+| `test` | Runs the browser checks against the running Ghost. |
+| `down` | Removes the Ghost container. |
+| `run` | All of the above, on an empty site and then a seeded one. What CI runs. |
+
+New screenshots are saved the first time and pass. Commit them to approve
+them. After an intended design change, run `test --update-screenshots` and
+commit the new versions. In CI, new and failing screenshots are in the
+`theme-qa-results` artifact.
 
 ## Ghost versions
 

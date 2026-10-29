@@ -25,7 +25,8 @@
     "theme-qa": "./bin/theme-qa.mjs"
   },
   "exports": {
-    ".": "./src/index.mjs"
+    ".": "./src/index.mjs",
+    "./test": "./tests/fixtures.mjs"
   },
   "files": [
     "bin/",
