@@ -1,12 +1,18 @@
 // Lighthouse (mobile preset) for pages marked `lighthouse: true`, first profile
 // only. Runs on its own, in one worker, after the other checks so scores aren't
 // skewed by parallel load. Scores are attached and printed by the runner as a table.
+//
+// Ghost's own apps (Portal, search, comments) are blocked. The theme can't
+// change them, and on CI runners, with a slow CPU and a fast network,
+// Lighthouse's simulation counted Portal's half a megabyte towards the largest
+// paint: Pod lost 15 to 20 points that had nothing to do with the theme.
 
 import { createServer } from 'node:net';
 import { chromium } from '@playwright/test';
 import lighthouse from 'lighthouse';
 import { test, expect } from './fixtures.mjs';
 import { runtime, LIGHTHOUSE } from './lib/runtime.mjs';
+import { GHOST_APPS } from './lib/ghost.mjs';
 
 /** Lighthouse drives Chromium over a debugging port; ask the OS for a free one. */
 function freePort() {
@@ -34,6 +40,7 @@ for (const entry of runtime.manifest.pages.filter((p) => p.lighthouse)) {
         output: 'html',
         logLevel: 'error',
         onlyCategories: Object.keys(runtime.budgets),
+        blockedUrlPatterns: [GHOST_APPS],
       });
       const scores = Object.fromEntries(
         Object.entries(result.lhr.categories).map(([id, category]) => [id, category.score]),

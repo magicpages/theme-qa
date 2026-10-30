@@ -46,7 +46,7 @@ reproduced locally with one command.
 | Console and network | JavaScript errors, theme assets that 404, libraries loaded from third-party CDNs. |
 | Layout | Pages that scroll sideways at phone, tablet or desktop width, with the elements sticking out. |
 | Accessibility | [axe](https://github.com/dequelabs/axe-core) violations rated critical or serious, in light and dark mode. Keyboard basics: skip link, visible focus, menus that open and close with the keyboard. |
-| Performance | [Lighthouse](https://github.com/GoogleChrome/lighthouse) scores for the homepage and a post, against a budget per theme. |
+| Performance | [Lighthouse](https://github.com/GoogleChrome/lighthouse) scores for the homepage and a post, against a budget per theme. Ghost's own apps (Portal, search, comments) are blocked during the run, so the score is the theme's. |
 | Visual changes | On pull requests: every template at phone, tablet and desktop widths, in light and dark mode, before and after the change. Anything that looks different waits for a reviewer's approval. |
 
 Problems inside what Ghost renders itself (Portal, search, comments, the

@@ -32,6 +32,9 @@ export function isHtml(response) {
 /** Same-origin paths served by Ghost itself rather than the theme. */
 const GHOST_PATHS = ['/public/', '/ghost/', '/members/'];
 
+/** Ghost's apps (Portal, search, comments, …), as a Lighthouse `blockedUrlPatterns` entry. */
+export const GHOST_APPS = 'https://cdn.jsdelivr.net/ghost/*';
+
 /**
  * Third-party origins Ghost loads on its own: its apps from jsDelivr, fonts
  * from Bunny Fonts when a site picks a custom font, avatars from Gravatar.
