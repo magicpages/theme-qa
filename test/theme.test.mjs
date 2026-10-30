@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { mock, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
@@ -6,6 +6,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import yauzl from 'yauzl';
 import { packageTheme } from '../src/theme.mjs';
+
+// packageTheme prints "── Zip: …". Plain text on stdout next to the test
+// runner's own messages makes `node --test` fail now and then with "Unable to
+// deserialize cloned data", so keep it quiet.
+mock.method(console, 'log', () => {});
 
 function config(dir, zip = {}) {
   return { dir, name: 'my-theme', pkg: {}, zip: { command: null, path: null, ...zip } };
