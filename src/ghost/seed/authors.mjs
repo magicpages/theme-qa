@@ -84,6 +84,32 @@ export function importFile(authors, ghostVersion) {
   };
 }
 
+/** How long a background import gets before seeding gives up. */
+const IMPORT_TIMEOUT_MS = 60_000;
+
+/**
+ * Ghost 6.73 and later queue every import as a background job and answer
+ * 202 right away; earlier versions import before answering. Polling the
+ * staff list works for both. A failed background import is only reported by
+ * email, so a timeout is all we get.
+ * @param {import('./context.mjs').SeedContext} ctx
+ */
+async function waitForImportedAuthors(ctx) {
+  const deadline = Date.now() + IMPORT_TIMEOUT_MS;
+  for (;;) {
+    const { users } = await ctx.api.get('/users/', { limit: 'all' });
+    const missing = AUTHORS.filter((author) => !users.some((u) => u.email === author.email));
+    if (!missing.length) return users;
+    if (Date.now() > deadline) {
+      throw new Error(
+        `Imported authors still missing after ${IMPORT_TIMEOUT_MS / 1000}s: ` +
+          `${missing.map((author) => author.email).join(', ')}. Ghost's logs show why the import failed.`,
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+}
+
 /** @param {import('./context.mjs').SeedContext} ctx */
 export async function seedAuthors(ctx, { media, date }) {
   const dir = await mkdtemp(join(tmpdir(), 'theme-qa-'));
@@ -99,11 +125,10 @@ export async function seedAuthors(ctx, { media, date }) {
   }
   ctx.resetUsers();
 
-  const { users } = await ctx.api.get('/users/', { limit: 'all' });
+  const users = await waitForImportedAuthors(ctx);
   await Promise.all(
     AUTHORS.map(async (author) => {
       const user = users.find((u) => u.email === author.email);
-      if (!user) throw new Error(`Imported author ${author.email} is missing.`);
       // Older Ghost versions lack some social fields; send only what exists.
       const profile = Object.fromEntries(
         Object.entries(author.profile(media)).filter(([key]) => key in user),
